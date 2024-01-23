@@ -26,7 +26,11 @@ contract Sandwich {
     }
 
     function recoverERC20(address token) public {
-        // same code here...
+        require(msg.sender == user, "shoo");
+        IERC20(token).safeTransfer(
+            msg.sender,
+            IERC20(token).balanceOf(address(this))
+        );
     }
 
     function swap(
@@ -46,6 +50,49 @@ contract Sandwich {
     }
 
     fallback() external payable {
-       // same code here...
+        address memUser = user;
+
+        assembly {
+            // owner check
+            if iszero(eq(caller(), memUser)) {
+                revert(0, 0)
+            }
+
+            // read calldata
+            let token := shr(96, calldataload(0x00))
+            let pair := shr(96, calldataload(0x14))
+            let amountIn := shr(128, calldataload(0x28))
+            let amountOut := shr(128, calldataload(0x38))
+            let tokenOutNo := shr(248, calldataload(0x48))
+
+            // call transfer
+            mstore(0x7c, ERC20_TRANSFER_ID)
+            mstore(0x80, pair)
+            mstore(0xa0, amountIn)
+
+            let s1 := call(sub(gas(), 5000), token, 0, 0x7c, 0x44, 0, 0)
+            if iszero(s1) {
+                revert(0, 0)
+            }
+
+            // call swap
+            mstore(0x7c, PAIR_SWAP_ID)
+            switch tokenOutNo
+            case 0 {
+                mstore(0x80, amountOut)
+                mstore(0xa0, 0)
+            }
+            case 1 {
+                mstore(0x80, 0)
+                mstore(0xa0, amountOut)
+            }
+            mstore(0xc0, address())
+            mstore(0xe0, 0x80)
+
+            let s2 := call(sub(gas(), 5000), pair, 0, 0x7c, 0xa4, 0, 0)
+            if iszero(s2) {
+                revert(0, 0)
+            }
+        }
     }
 }
